@@ -612,7 +612,10 @@ void FSUDSEditorToolkit::StartDialogue()
 void FSUDSEditorToolkit::Clear()
 {
 	OutputRows.Empty();
-	OutputListView->RequestListRefresh();
+	if (OutputListView.IsValid())
+	{
+		OutputListView->RequestListRefresh();
+	}
 	VariableRows.Empty();
 	if (VariablesListView.IsValid())
 	{
@@ -639,8 +642,11 @@ void FSUDSEditorToolkit::DestroyDialogue()
 
 void FSUDSEditorToolkit::UpdateOutput()
 {
-	OutputListView->RequestListRefresh();
-	OutputListView->ScrollToBottom();
+	if (OutputListView.IsValid())
+	{
+		OutputListView->RequestListRefresh();
+		OutputListView->ScrollToBottom();
+	}
 }
 
 void FSUDSEditorToolkit::UpdateChoiceButtons()
