@@ -22,17 +22,22 @@ public:
 	int SourceLineNo;
 	/// Condition expression that applies to this edge (for select nodes)
 	FSUDSExpression ConditionExpression;
-
+	/// Custom metadata for a node which the user can set. Can be used to annotate choice lines
+	/// Could be used to disable a choice if you don't have the stats to take it, or anything else
+	/// where you need a bit of extra information about a line that doesn't suit setting a dialogue variable for.
+	TMap<FName, FSUDSExpression> UserMetadata;
+	
 	int SourceNodeIdx = -1;
 	int TargetNodeIdx = -1;
 
 	FSUDSParsedEdge(int LineNo) : SourceLineNo(LineNo){}
 
-	FSUDSParsedEdge(int FromNodeIdx, int ToNodeIdx, int LineNo, const FString& InText, const FString& InTextID, const TMap<FName, FString>& Metadata)
+	FSUDSParsedEdge(int FromNodeIdx, int ToNodeIdx, int LineNo, const FString& InText, const FString& InTextID, const TMap<FName, FString>& Metadata, const TMap<FName, FSUDSExpression>& UserMeta)
 		: Text(InText),
 		  TextID(InTextID),
 		  TextMetadata(Metadata),
 		  SourceLineNo(LineNo),
+		  UserMetadata(UserMeta),
 		  SourceNodeIdx(FromNodeIdx),
 		  TargetNodeIdx(ToNodeIdx)
 	{
@@ -102,6 +107,9 @@ public:
 	int SourceLineNo;
 	/// Whether this is a valid fall-through target
 	bool AllowFallthrough = true;
+	
+	/// Custom metadata for a node which the user can set. Can be used to annotate speaker lines
+	TMap<FName, FSUDSExpression> UserMetadata;
 
 	// Path hierarchy of choice nodes leading to this node, of the form "/C002/C006" etc, not including this node index
 	// This helps us identify valid fallthroughs
@@ -130,14 +138,15 @@ public:
 	{
 	}
 
-	FSUDSParsedNode(const FString& InSpeaker, const FString& InText, const FString& InTextID, const TMap<FName, FString>& Metadata, int Indent, int LineNo)
+	FSUDSParsedNode(const FString& InSpeaker, const FString& InText, const FString& InTextID, const TMap<FName, FString>& Metadata, const TMap<FName, FSUDSExpression>& UserMeta, int Indent, int LineNo)
 		: NodeType(ESUDSParsedNodeType::Text),
 		  OriginalIndent(Indent),
 		  Identifier(InSpeaker),
 		  Text(InText),
 		  TextID(InTextID),
 		  TextMetadata(Metadata),
-		  SourceLineNo(LineNo)
+		  SourceLineNo(LineNo),
+		  UserMetadata(UserMeta)
 	{
 	}
 
@@ -304,11 +313,13 @@ protected:
 		}
 	};
 
-	/// Metadata applied to speaker lines / choices until reset
+	/// Text Metadata applied to speaker lines / choices until reset
 	/// For each key there's a stack of metadata, with most indented at the top
 	TMap<FName, TArray<ParsedMetadata>> PersistentMetadata;
-	/// Metadata applied just to the next speaker line or choice
+	/// Text Metadata applied just to the next speaker line or choice
 	TMap<FName, ParsedMetadata> TransientMetadata;
+	/// User metadata for the next speaker line or choice
+	TMap<FName, FSUDSExpression> UserMetadata;
 	
 	/// List of speakers, detected during parsing of lines of text 
 	TArray<FString> ReferencedSpeakers;
@@ -456,6 +467,7 @@ protected:
 	                            FSUDSMessageLogger* Logger,
 	                            bool bSilent);
 	TMap<FName, FString> GetTextMetadataForNextEntry(int CurrentLineIndent);
+	TMap<FName, FSUDSExpression> ConsumeUserMetadata();
 	bool IsCommentLine(const FStringView& TrimmedLine);
 	FStringView TrimLine(const FStringView& Line, int& OutIndentLevel) const;
 	int FindChoiceAfterTextNode(const FSUDSScriptImporter::ParsedTree& Tree, int TextNodeIdx, const FString& ConditionalPath);

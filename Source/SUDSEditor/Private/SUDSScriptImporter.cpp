@@ -36,6 +36,7 @@ bool FSUDSScriptImporter::ImportFromBuffer(const TCHAR *Start, int32 Length, con
 	BodyTree.Reset();
 	PersistentMetadata.Empty();
 	TransientMetadata.Empty();
+	UserMetadata.Empty();
 	bHeaderDone = false;
 	bHeaderInProgress = false;
 	bTooLateForHeader = false;
@@ -180,6 +181,7 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 	FSUDSMessageLogger* Logger,
 	bool bSilent)
 {
+	// Translator comments
 	// Comment metadata starts with:
 	// #= [Key:] Single Use Metadata (next line only)
 	// #+ [Key:] Persistent Metadata (apply to all lines until reset)
@@ -240,6 +242,47 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 		}
 		return true;
 	}
+	else
+	{
+		// User custom metadata - always applies to next line only
+		// Similar syntax to set lines, except text isn't allowed (this is not player visible)
+		// #% Key = Value
+		// #% Key Value
+		const FRegexPattern UserMetaPattern(TEXT("^#\\%\\s+(\\S+)\\s+(?:=\\s+)?([^\\]]+)\\]$"));
+		FRegexMatcher UserMetaRegex(UserMetaPattern, LineStr);
+		if (UserMetaRegex.FindNext())
+		{
+			if (!bSilent)
+				UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: USERMETA  : %s"), LineNo, IndentLevel, *FString(Line));
+		}
+		
+		FString Name = UserMetaRegex.GetCaptureGroup(1);
+		FString ExprStr = UserMetaRegex.GetCaptureGroup(2).TrimStartAndEnd(); // trim because capture accepts spaces in quotes
+
+		FSUDSExpression Expr;
+		{
+			FString ParseError;
+			if (Expr.ParseFromString(ExprStr, &ParseError))
+			{
+				if (Expr.IsTextLiteral())
+				{
+					if (!bSilent)
+						Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: Text value not allowed in user metadata"), *NameForErrors, LineNo);
+					return false;
+				}
+				else
+				{
+					UserMetadata.Add(FName(Name), Expr);
+					return true;
+				}
+			}
+			else
+			{
+				if (!bSilent)
+					Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
+			}
+		}
+	}
 
 	return false;
 	
@@ -277,6 +320,13 @@ TMap<FName, FString> FSUDSScriptImporter::GetTextMetadataForNextEntry(int Curren
 	}
 	TransientMetadata.Empty();
 
+	return Ret;
+}
+
+TMap<FName, FSUDSExpression> FSUDSScriptImporter::ConsumeUserMetadata()
+{
+	TMap<FName, FSUDSExpression> Ret = UserMetadata;
+	UserMetadata.Empty();
 	return Ret;
 }
 
@@ -643,14 +693,15 @@ bool FSUDSScriptImporter::ParseChoiceLine(const FStringView& Line,
 		RetrieveAndRemoveTextID(ChoiceTextView, ChoiceTextID);
 		const FString ChoiceText = FString(ChoiceTextView);
 		auto ChoiceTextMeta = GetTextMetadataForNextEntry(IndentLevel);
-		const int EdgeIdx = ChoiceNode.Edges.Add(FSUDSParsedEdge(ChoiceNodeIdx, -1, LineNo, ChoiceText, ChoiceTextID, ChoiceTextMeta));
+		auto ChoiceUserMeta = ConsumeUserMetadata();
+		const int EdgeIdx = ChoiceNode.Edges.Add(FSUDSParsedEdge(ChoiceNodeIdx, -1, LineNo, ChoiceText, ChoiceTextID, ChoiceTextMeta, ChoiceUserMeta));
 		Tree.EdgeInProgressNodeIdx = ChoiceNodeIdx;
 		Tree.EdgeInProgressEdgeIdx = EdgeIdx;
 
 		if (bGenerateSpeakerLine)
 		{
 			// We use the same text & ID so this is just one localisation entry
-			Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(GeneratedSpeakerID, ChoiceText, ChoiceTextID, ChoiceTextMeta, IndentLevel + 1, LineNo));
+			Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(GeneratedSpeakerID, ChoiceText, ChoiceTextID, ChoiceTextMeta, ChoiceUserMeta, IndentLevel + 1, LineNo));
 			ReferencedSpeakers.AddUnique(GeneratedSpeakerID);			
 		}
 		return true;
@@ -1575,7 +1626,7 @@ bool FSUDSScriptImporter::ParseTextLine(const FStringView& InLine,
 		// New text node
 		// Text nodes can never introduce another indent context
 		// We've already backed out to the outer indent in caller
-		Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(Speaker, Text, TextID, GetTextMetadataForNextEntry(IndentLevel), IndentLevel, LineNo));
+		Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(Speaker, Text, TextID, GetTextMetadataForNextEntry(IndentLevel), ConsumeUserMetadata(), IndentLevel, LineNo));
 
 		ReferencedSpeakers.AddUnique(Speaker);
 		
@@ -2479,6 +2530,7 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 						
 						auto TextNode = NewObject<USUDSScriptNodeText>(Asset);
 						TextNode->Init(InNode.Identifier, FText::FromStringTable (StringTable->GetStringTableId(), InNode.TextID), InNode.SourceLineNo);
+						TextNode->SetUserMetadata(InNode.UserMetadata);
 						Node = TextNode;
 						break;
 					}
@@ -2643,6 +2695,7 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 							}
 						}
 
+						NewEdge.SetUserMetadata(InEdge.UserMetadata);
 						Node->AddEdge(NewEdge);
 
 					}
