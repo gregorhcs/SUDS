@@ -38,6 +38,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category="SUDS")
 	bool bHasChoices = false;
 	
+	/// User metadata associated with this speaker line. May include derived expressions
+	UPROPERTY()
+	TMap<FName, FSUDSExpression> UserMetadata;
+	
 	mutable bool bFormatExtracted = false; 
 	mutable TArray<FName> ParameterNames;
 	mutable FTextFormat TextFormat;
@@ -60,5 +64,9 @@ public:
 	bool HasParameters() const;
 
 	void NotifyMayHaveChoices() { bHasChoices = true; }
+	
+	const TMap<FName, FSUDSExpression>& GetUserMetadata() const { return UserMetadata; }
+	void SetUserMetadata(const TMap<FName, FSUDSExpression>& Meta) { UserMetadata = Meta; }
+
 
 };

@@ -47,6 +47,11 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category="SUDS")
 	int SourceLineNo;
+	
+	/// User metadata associated with this edge. May include derived expressions
+	UPROPERTY()
+	TMap<FName, FSUDSExpression> UserMetadata;
+
 
 	mutable bool bFormatExtracted = false; 
 	mutable TArray<FName> ParameterNames;
@@ -69,11 +74,13 @@ public:
 	TWeakObjectPtr<USUDSScriptNode> GetTargetNode() const { return TargetNode; }
 	const FSUDSExpression& GetCondition() const { return Condition; }
 	int GetSourceLineNo() const { return SourceLineNo; }
+	const TMap<FName, FSUDSExpression>& GetUserMetadata() const { return UserMetadata; }
 
 	void SetText(const FText& Text);
 	void SetType(ESUDSEdgeType InType) { Type = InType; } 
 	void SetTargetNode(const TWeakObjectPtr<USUDSScriptNode>& InTargetNode);
 	void SetCondition(const FSUDSExpression& InCondition) { Condition = InCondition; }
+	void SetUserMetadata(const TMap<FName, FSUDSExpression>& Meta) { UserMetadata = Meta; }
 
 	const FTextFormat& GetTextFormat() const;
 	const TArray<FName>& GetParameterNames() const;

@@ -36,6 +36,7 @@ bool FSUDSScriptImporter::ImportFromBuffer(const TCHAR *Start, int32 Length, con
 	BodyTree.Reset();
 	PersistentMetadata.Empty();
 	TransientMetadata.Empty();
+	UserMetadata.Empty();
 	bHeaderDone = false;
 	bHeaderInProgress = false;
 	bTooLateForHeader = false;
@@ -180,6 +181,7 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 	FSUDSMessageLogger* Logger,
 	bool bSilent)
 {
+	// Translator comments
 	// Comment metadata starts with:
 	// #= [Key:] Single Use Metadata (next line only)
 	// #+ [Key:] Persistent Metadata (apply to all lines until reset)
@@ -188,57 +190,122 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 	//   - The same key is set again (can be set to blank to reset to empty)
 	//   - A line that is more outdented than the source of the key is encountered
 
-	FString LineStr(Line);
-	const FRegexPattern MetaPattern(TEXT("^#([\\=\\+])\\s*(?:(\\S*)\\s*:\\s*)?(.*)$"));
-	FRegexMatcher MetaRegex(MetaPattern, LineStr);
-	if (MetaRegex.FindNext())
+	if (Line.StartsWith(TEXT("#=")) || Line.StartsWith(TEXT("#+")))
 	{
-		if (!bSilent)
-			UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: META  : %s"), LineNo, IndentLevel, *FString(Line));
-
-		const bool bIsPersistent = MetaRegex.GetCaptureGroup(1) == "+";
-		// There is no "count" of capture groups, test highest to detect if key used
-		FString KeyStr = MetaRegex.GetCaptureGroup(2);
-		const FName Key = FName(KeyStr.IsEmpty() ? "Comment" :KeyStr);
-		const FString Value = MetaRegex.GetCaptureGroup(3).TrimStartAndEnd();
-
-		if (bIsPersistent)
+		FString LineStr(Line);
+		const FRegexPattern MetaPattern(TEXT("^#([\\=\\+])\\s*(?:(\\S*)\\s*:\\s*)?(.*)$"));
+		FRegexMatcher MetaRegex(MetaPattern, LineStr);
+		if (MetaRegex.FindNext())
 		{
-			TArray<ParsedMetadata>* pStack = PersistentMetadata.Find(Key);
-			if (!pStack)
+			if (!bSilent)
+				UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: META  : %s"), LineNo, IndentLevel, *FString(Line));
+
+			const bool bIsPersistent = MetaRegex.GetCaptureGroup(1) == "+";
+			// There is no "count" of capture groups, test highest to detect if key used
+			FString KeyStr = MetaRegex.GetCaptureGroup(2);
+			const FName Key = FName(KeyStr.IsEmpty() ? "Comment" :KeyStr);
+			const FString Value = MetaRegex.GetCaptureGroup(3).TrimStartAndEnd();
+
+			if (bIsPersistent)
 			{
-				// Only bother creating if non-empty
-				// If we find a blank and there's a stack there already, we do add an entry since blank overrides others in scope
-				if (!Value.IsEmpty())
+				TArray<ParsedMetadata>* pStack = PersistentMetadata.Find(Key);
+				if (!pStack)
 				{
-					pStack = &PersistentMetadata.Add(Key);
+					// Only bother creating if non-empty
+					// If we find a blank and there's a stack there already, we do add an entry since blank overrides others in scope
+					if (!Value.IsEmpty())
+					{
+						pStack = &PersistentMetadata.Add(Key);
+					}
+				}
+
+				if (pStack)
+				{
+					// First we need to check if this line is less or equal indented; if so we have to strip out existing stack items
+					while (!pStack->IsEmpty() && IndentLevel <= pStack->Top().IndentLevel)
+					{
+						pStack->Pop();
+					}
+					pStack->Push(ParsedMetadata(Key, Value, IndentLevel));
 				}
 			}
-
-			if (pStack)
+			else
 			{
-				// First we need to check if this line is less or equal indented; if so we have to strip out existing stack items
-				while (!pStack->IsEmpty() && IndentLevel <= pStack->Top().IndentLevel)
+				if (Value.IsEmpty())
 				{
-					pStack->Pop();
+					// Reset
+					TransientMetadata.Remove(Key);
 				}
-				pStack->Push(ParsedMetadata(Key, Value, IndentLevel));
+				else
+				{
+					TransientMetadata.Add(Key, ParsedMetadata(Key, Value, IndentLevel));
+				}
+			
+			}
+			return true;
+		}
+		else
+		{
+			Logger->Logf(ELogVerbosity::Warning,
+							 TEXT(
+								 "%s: Malformed translator comment on line %d, ignoring"),
+							 *NameForErrors,
+							 LineNo);
+			return false;
+		}
+	}
+	else if (Line.StartsWith(TEXT("#%")))
+	{
+		// User custom metadata - always applies to next line only
+		// Similar syntax to set lines, except text isn't allowed (this is not player visible)
+		// #% Key = Value
+		// #% Key Value
+		FString LineStr(Line);
+		const FRegexPattern UserMetaPattern(TEXT("^#\\%\\s+(\\S+)\\s+(?:=\\s+)?(\\S.*)$"));
+		FRegexMatcher UserMetaRegex(UserMetaPattern, LineStr);
+		if (UserMetaRegex.FindNext())
+		{
+			if (!bSilent)
+				UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: USERMETA  : %s"), LineNo, IndentLevel, *FString(Line));
+		
+			FString Name = UserMetaRegex.GetCaptureGroup(1);
+			FString ExprStr = UserMetaRegex.GetCaptureGroup(2).TrimStartAndEnd(); // trim because capture accepts spaces in quotes
+
+			FSUDSExpression Expr;
+			{
+				FString ParseError;
+				if (Expr.ParseFromString(ExprStr, &ParseError))
+				{
+					if (Expr.IsTextLiteral())
+					{
+						if (!bSilent)
+							Logger->Logf(ELogVerbosity::Warning, TEXT("Error in %s line %d: Text values not allowed in user metadata"), *NameForErrors, LineNo);
+						return false;
+					}
+					else
+					{
+						UserMetadata.Add(FName(Name), Expr);
+						return true;
+					}
+				}
+				else
+				{
+					if (!bSilent)
+						Logger->Logf(ELogVerbosity::Warning, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
+					return false;
+				}
 			}
 		}
 		else
 		{
-			if (Value.IsEmpty())
-			{
-				// Reset
-				TransientMetadata.Remove(Key);
-			}
-			else
-			{
-				TransientMetadata.Add(Key, ParsedMetadata(Key, Value, IndentLevel));
-			}
-			
+			// Only a warning, in case other types of comment accidentally clash
+			Logger->Logf(ELogVerbosity::Warning,
+							 TEXT(
+								 "%s: Malformed user metadata comment on line %d, ignoring"),
+							 *NameForErrors,
+							 LineNo);
+			return false;
 		}
-		return true;
 	}
 
 	return false;
@@ -277,6 +344,13 @@ TMap<FName, FString> FSUDSScriptImporter::GetTextMetadataForNextEntry(int Curren
 	}
 	TransientMetadata.Empty();
 
+	return Ret;
+}
+
+TMap<FName, FSUDSExpression> FSUDSScriptImporter::ConsumeUserMetadata()
+{
+	TMap<FName, FSUDSExpression> Ret = UserMetadata;
+	UserMetadata.Empty();
 	return Ret;
 }
 
@@ -643,14 +717,15 @@ bool FSUDSScriptImporter::ParseChoiceLine(const FStringView& Line,
 		RetrieveAndRemoveTextID(ChoiceTextView, ChoiceTextID);
 		const FString ChoiceText = FString(ChoiceTextView);
 		auto ChoiceTextMeta = GetTextMetadataForNextEntry(IndentLevel);
-		const int EdgeIdx = ChoiceNode.Edges.Add(FSUDSParsedEdge(ChoiceNodeIdx, -1, LineNo, ChoiceText, ChoiceTextID, ChoiceTextMeta));
+		auto ChoiceUserMeta = ConsumeUserMetadata();
+		const int EdgeIdx = ChoiceNode.Edges.Add(FSUDSParsedEdge(ChoiceNodeIdx, -1, LineNo, ChoiceText, ChoiceTextID, ChoiceTextMeta, ChoiceUserMeta));
 		Tree.EdgeInProgressNodeIdx = ChoiceNodeIdx;
 		Tree.EdgeInProgressEdgeIdx = EdgeIdx;
 
 		if (bGenerateSpeakerLine)
 		{
 			// We use the same text & ID so this is just one localisation entry
-			Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(GeneratedSpeakerID, ChoiceText, ChoiceTextID, ChoiceTextMeta, IndentLevel + 1, LineNo));
+			Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(GeneratedSpeakerID, ChoiceText, ChoiceTextID, ChoiceTextMeta, ChoiceUserMeta, IndentLevel + 1, LineNo));
 			ReferencedSpeakers.AddUnique(GeneratedSpeakerID);			
 		}
 		return true;
@@ -1575,7 +1650,7 @@ bool FSUDSScriptImporter::ParseTextLine(const FStringView& InLine,
 		// New text node
 		// Text nodes can never introduce another indent context
 		// We've already backed out to the outer indent in caller
-		Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(Speaker, Text, TextID, GetTextMetadataForNextEntry(IndentLevel), IndentLevel, LineNo));
+		Ctx.LastTextNodeIdx = AppendNode(Tree, FSUDSParsedNode(Speaker, Text, TextID, GetTextMetadataForNextEntry(IndentLevel), ConsumeUserMetadata(), IndentLevel, LineNo));
 
 		ReferencedSpeakers.AddUnique(Speaker);
 		
@@ -2479,6 +2554,7 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 						
 						auto TextNode = NewObject<USUDSScriptNodeText>(Asset);
 						TextNode->Init(InNode.Identifier, FText::FromStringTable (StringTable->GetStringTableId(), InNode.TextID), InNode.SourceLineNo);
+						TextNode->SetUserMetadata(InNode.UserMetadata);
 						Node = TextNode;
 						break;
 					}
@@ -2643,6 +2719,7 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 							}
 						}
 
+						NewEdge.SetUserMetadata(InEdge.UserMetadata);
 						Node->AddEdge(NewEdge);
 
 					}
