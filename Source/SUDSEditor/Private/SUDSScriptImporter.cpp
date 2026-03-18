@@ -190,64 +190,77 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 	//   - The same key is set again (can be set to blank to reset to empty)
 	//   - A line that is more outdented than the source of the key is encountered
 
-	FString LineStr(Line);
-	const FRegexPattern MetaPattern(TEXT("^#([\\=\\+])\\s*(?:(\\S*)\\s*:\\s*)?(.*)$"));
-	FRegexMatcher MetaRegex(MetaPattern, LineStr);
-	if (MetaRegex.FindNext())
+	if (Line.StartsWith(TEXT("#=")) || Line.StartsWith(TEXT("#+")))
 	{
-		if (!bSilent)
-			UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: META  : %s"), LineNo, IndentLevel, *FString(Line));
-
-		const bool bIsPersistent = MetaRegex.GetCaptureGroup(1) == "+";
-		// There is no "count" of capture groups, test highest to detect if key used
-		FString KeyStr = MetaRegex.GetCaptureGroup(2);
-		const FName Key = FName(KeyStr.IsEmpty() ? "Comment" :KeyStr);
-		const FString Value = MetaRegex.GetCaptureGroup(3).TrimStartAndEnd();
-
-		if (bIsPersistent)
+		FString LineStr(Line);
+		const FRegexPattern MetaPattern(TEXT("^#([\\=\\+])\\s*(?:(\\S*)\\s*:\\s*)?(.*)$"));
+		FRegexMatcher MetaRegex(MetaPattern, LineStr);
+		if (MetaRegex.FindNext())
 		{
-			TArray<ParsedMetadata>* pStack = PersistentMetadata.Find(Key);
-			if (!pStack)
-			{
-				// Only bother creating if non-empty
-				// If we find a blank and there's a stack there already, we do add an entry since blank overrides others in scope
-				if (!Value.IsEmpty())
-				{
-					pStack = &PersistentMetadata.Add(Key);
-				}
-			}
+			if (!bSilent)
+				UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: META  : %s"), LineNo, IndentLevel, *FString(Line));
 
-			if (pStack)
+			const bool bIsPersistent = MetaRegex.GetCaptureGroup(1) == "+";
+			// There is no "count" of capture groups, test highest to detect if key used
+			FString KeyStr = MetaRegex.GetCaptureGroup(2);
+			const FName Key = FName(KeyStr.IsEmpty() ? "Comment" :KeyStr);
+			const FString Value = MetaRegex.GetCaptureGroup(3).TrimStartAndEnd();
+
+			if (bIsPersistent)
 			{
-				// First we need to check if this line is less or equal indented; if so we have to strip out existing stack items
-				while (!pStack->IsEmpty() && IndentLevel <= pStack->Top().IndentLevel)
+				TArray<ParsedMetadata>* pStack = PersistentMetadata.Find(Key);
+				if (!pStack)
 				{
-					pStack->Pop();
+					// Only bother creating if non-empty
+					// If we find a blank and there's a stack there already, we do add an entry since blank overrides others in scope
+					if (!Value.IsEmpty())
+					{
+						pStack = &PersistentMetadata.Add(Key);
+					}
 				}
-				pStack->Push(ParsedMetadata(Key, Value, IndentLevel));
-			}
-		}
-		else
-		{
-			if (Value.IsEmpty())
-			{
-				// Reset
-				TransientMetadata.Remove(Key);
+
+				if (pStack)
+				{
+					// First we need to check if this line is less or equal indented; if so we have to strip out existing stack items
+					while (!pStack->IsEmpty() && IndentLevel <= pStack->Top().IndentLevel)
+					{
+						pStack->Pop();
+					}
+					pStack->Push(ParsedMetadata(Key, Value, IndentLevel));
+				}
 			}
 			else
 			{
-				TransientMetadata.Add(Key, ParsedMetadata(Key, Value, IndentLevel));
-			}
+				if (Value.IsEmpty())
+				{
+					// Reset
+					TransientMetadata.Remove(Key);
+				}
+				else
+				{
+					TransientMetadata.Add(Key, ParsedMetadata(Key, Value, IndentLevel));
+				}
 			
+			}
+			return true;
 		}
-		return true;
+		else
+		{
+			Logger->Logf(ELogVerbosity::Warning,
+							 TEXT(
+								 "%s: Malformed translator comment on line %d, ignoring"),
+							 *NameForErrors,
+							 LineNo);
+			return false;
+		}
 	}
-	else
+	else if (Line.StartsWith(TEXT("#%")))
 	{
 		// User custom metadata - always applies to next line only
 		// Similar syntax to set lines, except text isn't allowed (this is not player visible)
 		// #% Key = Value
 		// #% Key Value
+		FString LineStr(Line);
 		const FRegexPattern UserMetaPattern(TEXT("^#\\%\\s+(\\S+)\\s+(?:=\\s+)?(\\S.*)$"));
 		FRegexMatcher UserMetaRegex(UserMetaPattern, LineStr);
 		if (UserMetaRegex.FindNext())
@@ -266,7 +279,7 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 					if (Expr.IsTextLiteral())
 					{
 						if (!bSilent)
-							Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: Text value not allowed in user metadata"), *NameForErrors, LineNo);
+							Logger->Logf(ELogVerbosity::Warning, TEXT("Error in %s line %d: Text values not allowed in user metadata"), *NameForErrors, LineNo);
 						return false;
 					}
 					else
@@ -278,9 +291,20 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 				else
 				{
 					if (!bSilent)
-						Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
+						Logger->Logf(ELogVerbosity::Warning, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
+					return false;
 				}
 			}
+		}
+		else
+		{
+			// Only a warning, in case other types of comment accidentally clash
+			Logger->Logf(ELogVerbosity::Warning,
+							 TEXT(
+								 "%s: Malformed user metadata comment on line %d, ignoring"),
+							 *NameForErrors,
+							 LineNo);
+			return false;
 		}
 	}
 
