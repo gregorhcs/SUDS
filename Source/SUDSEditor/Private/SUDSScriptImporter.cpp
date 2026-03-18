@@ -248,38 +248,38 @@ bool FSUDSScriptImporter::ParseCommentMetadataLine(const FStringView& Line,
 		// Similar syntax to set lines, except text isn't allowed (this is not player visible)
 		// #% Key = Value
 		// #% Key Value
-		const FRegexPattern UserMetaPattern(TEXT("^#\\%\\s+(\\S+)\\s+(?:=\\s+)?([^\\]]+)\\]$"));
+		const FRegexPattern UserMetaPattern(TEXT("^#\\%\\s+(\\S+)\\s+(?:=\\s+)?(\\S.*)$"));
 		FRegexMatcher UserMetaRegex(UserMetaPattern, LineStr);
 		if (UserMetaRegex.FindNext())
 		{
 			if (!bSilent)
 				UE_LOG(LogSUDSImporter, VeryVerbose, TEXT("%3d:%2d: USERMETA  : %s"), LineNo, IndentLevel, *FString(Line));
-		}
 		
-		FString Name = UserMetaRegex.GetCaptureGroup(1);
-		FString ExprStr = UserMetaRegex.GetCaptureGroup(2).TrimStartAndEnd(); // trim because capture accepts spaces in quotes
+			FString Name = UserMetaRegex.GetCaptureGroup(1);
+			FString ExprStr = UserMetaRegex.GetCaptureGroup(2).TrimStartAndEnd(); // trim because capture accepts spaces in quotes
 
-		FSUDSExpression Expr;
-		{
-			FString ParseError;
-			if (Expr.ParseFromString(ExprStr, &ParseError))
+			FSUDSExpression Expr;
 			{
-				if (Expr.IsTextLiteral())
+				FString ParseError;
+				if (Expr.ParseFromString(ExprStr, &ParseError))
 				{
-					if (!bSilent)
-						Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: Text value not allowed in user metadata"), *NameForErrors, LineNo);
-					return false;
+					if (Expr.IsTextLiteral())
+					{
+						if (!bSilent)
+							Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: Text value not allowed in user metadata"), *NameForErrors, LineNo);
+						return false;
+					}
+					else
+					{
+						UserMetadata.Add(FName(Name), Expr);
+						return true;
+					}
 				}
 				else
 				{
-					UserMetadata.Add(FName(Name), Expr);
-					return true;
+					if (!bSilent)
+						Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
 				}
-			}
-			else
-			{
-				if (!bSilent)
-					Logger->Logf(ELogVerbosity::Error, TEXT("Error in %s line %d: %s"), *NameForErrors, LineNo, *ParseError);
 			}
 		}
 	}
