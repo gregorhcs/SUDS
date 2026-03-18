@@ -28,6 +28,8 @@ class SudsLexer(RegexLexer):
             (r'\<\/\>', Name.Decorator),
             # Goto labels
             (r'\s*:\S+\n', Name.Label),
+            # Comments
+            (r'\s*\#[\=\+\%]?.*\n', Comment.Special),
             # Fallback for all other text
             # Needs an optional \n on the end to finish lines correctly
             (r'\s+[\n]?', Text),
