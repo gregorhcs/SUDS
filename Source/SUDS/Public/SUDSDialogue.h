@@ -635,6 +635,50 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="SUDS|Dialogue")
 	void UnSetVariable(FName Name);
+	
+	/**
+	 * Get a piece of user-specified metadata for the current speaker line.
+	 * User metadata is assigned by adding a special comment before a speaker line, and can be used
+	 * for anything where you need additional data associated with a particular line (as opposed to 
+	 * setting a variable or sending an event).
+	 * @param Key The metadata key
+	 * @return The current metadata value
+	 */
+	UFUNCTION(BlueprintCallable, Category="SUDS|Dialogue")
+	FSUDSValue GetSpeakerLineUserMetadata(FName Key) const;
+	
+	/**
+	 * Get all user-specified metadata for the current speaker line.
+	 * User metadata is assigned by adding a special comment before a speaker line, and can be used
+	 * for anything where you need additional data associated with a particular line (as opposed to 
+	 * setting a variable or sending an event).
+	 * @return All key/value user metadata for the current speaker line
+	 */
+	UFUNCTION(BlueprintCallable, Category="SUDS|Dialogue")
+	TMap<FName, FSUDSValue> GetAllSpeakerLineUserMetadata() const;
+	
+	/**
+	 * Get a piece of user-specified metadata for a choice in the current list of choices.
+	 * User metadata is assigned by adding a special comment before a choice line, and can be used
+	 * for anything where you need additional data associated with a particular choice, such as RPG
+	 * stat requirements.
+	 * @param Index The choice index
+	 * @param Key The metadata key
+	 * @return The current metadata value
+	 */
+	UFUNCTION(BlueprintCallable, Category="SUDS|Dialogue")
+	FSUDSValue GetChoiceUserMetadata(int Index, FName Key) const;
+	
+	/**
+	 * Get all user-specified metadata for a choice in the current list of choices.
+	 * User metadata is assigned by adding a special comment before a choice line, and can be used
+	 * for anything where you need additional data associated with a particular choice, such as RPG
+	 * stat requirements.
+	 * @param Index The choice index
+	 * @return All key/value user metadata for the choice
+	 */
+	UFUNCTION(BlueprintCallable, Category="SUDS|Dialogue")
+	TMap<FName, FSUDSValue> GetAllChoiceUserMetadata(int Index) const;
 
 #if WITH_EDITOR
 	FOnDialogueSpeakerLineInternal InternalOnSpeakerLine;

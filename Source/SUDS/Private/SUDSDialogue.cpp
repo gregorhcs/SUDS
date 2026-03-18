@@ -1323,3 +1323,57 @@ void USUDSDialogue::UnSetVariable(FName Name)
 {
 	VariableState.Remove(Name);
 }
+
+FSUDSValue USUDSDialogue::GetSpeakerLineUserMetadata(FName Key) const
+{
+	if (CurrentSpeakerNode)
+	{
+		if (auto pExpr = CurrentSpeakerNode->GetUserMetadata().Find(Key))
+		{
+			return pExpr->Evaluate(VariableState, GetGlobalVariables());
+		}
+	}
+	return FSUDSValue();
+}
+
+TMap<FName, FSUDSValue> USUDSDialogue::GetAllSpeakerLineUserMetadata() const
+{
+	TMap<FName, FSUDSValue> Ret;
+	if (CurrentSpeakerNode)
+	{
+		const TMap<FName, FSUDSValue>& GlobalVariables = GetGlobalVariables();
+		const auto& InMeta = CurrentSpeakerNode->GetUserMetadata();
+		for (const auto& Pair : InMeta)
+		{
+			Ret.Add(Pair.Key, Pair.Value.Evaluate(VariableState, GlobalVariables));
+		}
+	}
+	return Ret;
+}
+
+FSUDSValue USUDSDialogue::GetChoiceUserMetadata(int Index, FName Key) const
+{
+	if (CurrentChoices.IsValidIndex(Index))
+	{
+		if (auto pExpr = CurrentChoices[Index].GetUserMetadata().Find(Key))
+		{
+			return pExpr->Evaluate(VariableState, GetGlobalVariables());
+		}
+	}
+	return FSUDSValue();
+}
+
+TMap<FName, FSUDSValue> USUDSDialogue::GetAllChoiceUserMetadata(int Index) const
+{
+	TMap<FName, FSUDSValue> Ret;
+	if (CurrentChoices.IsValidIndex(Index))
+	{
+		const TMap<FName, FSUDSValue>& GlobalVariables = GetGlobalVariables();
+		const auto& InMeta = CurrentChoices[Index].GetUserMetadata();
+		for (const auto& Pair : InMeta)
+		{
+			Ret.Add(Pair.Key, Pair.Value.Evaluate(VariableState, GlobalVariables));
+		}
+	}
+	return Ret;
+}
