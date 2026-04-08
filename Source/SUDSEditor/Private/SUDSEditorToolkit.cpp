@@ -775,7 +775,10 @@ void FSUDSEditorToolkit::AddTraceLogRow(const FName& Category, int SourceLineNo,
 {
 	FSlateColor Colour = GetColourForCategory(Category);
 	
-	TraceLog->AppendMessage(Category, SourceLineNo, Message, Colour);
+	if (TraceLog)
+	{
+		TraceLog->AppendMessage(Category, SourceLineNo, Message, Colour);
+	}
 }
 
 FSlateColor FSUDSEditorToolkit::GetColourForCategory(const FName& Category)
