@@ -706,7 +706,11 @@ void FSUDSEditorToolkit::OnDialogueChoice(USUDSDialogue* D, int ChoiceIndex, int
 
 void FSUDSEditorToolkit::OnDialogueEvent(USUDSDialogue* D, FName EventName, const TArray<FSUDSValue>& Args, int LineNo)
 {
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+	TStringBuilder<256> B;
+#else
 	FStringBuilderBase B;
+#endif
 	if (Args.Num() > 0)
 	{
 		for (auto& Arg : Args)
@@ -1372,6 +1376,24 @@ TSharedRef<SWidget> SSUDSEditorVariableItem::GetGenderMenu()
 {
 	FMenuBuilder MenuBuilder(true, NULL);
 
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+	// StaticEnum<ETextGender>() doesn't exist anymore so we have to do this manually
+	const FUIAction Action0(FExecuteAction::CreateSP(this, &SSUDSEditorVariableItem::OnGenderSelected, ETextGender::Feminine));
+	MenuBuilder.AddMenuEntry(FText::FromString(LexToString(ETextGender::Feminine)),
+							 FText(),
+							 FSlateIcon(),
+							 Action0);
+	const FUIAction Action1(FExecuteAction::CreateSP(this, &SSUDSEditorVariableItem::OnGenderSelected, ETextGender::Masculine));
+	MenuBuilder.AddMenuEntry(FText::FromString(LexToString(ETextGender::Masculine)),
+							 FText(),
+							 FSlateIcon(),
+							 Action1);
+	const FUIAction Action2(FExecuteAction::CreateSP(this, &SSUDSEditorVariableItem::OnGenderSelected, ETextGender::Neuter));
+	MenuBuilder.AddMenuEntry(FText::FromString(LexToString(ETextGender::Neuter)),
+							 FText(),
+							 FSlateIcon(),
+							 Action2);
+#else
 	// NumEnums() - 1 because the last value is the autogen _MAX value
 	for (int i = 0; i < StaticEnum<ETextGender>()->NumEnums() - 1; ++i)
 	{
@@ -1383,6 +1405,7 @@ TSharedRef<SWidget> SSUDSEditorVariableItem::GetGenderMenu()
 		                         Action);
 		
 	}
+#endif
 	
 	return MenuBuilder.MakeWidget();
 	

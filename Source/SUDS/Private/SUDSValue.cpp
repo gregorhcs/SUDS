@@ -2,6 +2,9 @@
 // Released under the MIT license https://opensource.org/license/MIT/
 #include "SUDSValue.h"
 
+#include "UObject/Class.h"
+#include "Internationalization/Text.h"
+
 FArchive& operator<<(FArchive& Ar, FSUDSValue& Value)
 {
 	// Custom serialisation since we can't auto-serialise union, TOptional
@@ -62,7 +65,11 @@ FString FSUDSValue::ToString() const
 	case ESUDSValueType::Boolean:
 		return GetBooleanValue() ? "True" : "False";
 	case ESUDSValueType::Gender:
-		return StaticEnum<ETextGender>()->GetNameStringByValue((int64)GetGenderValue());
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+		return LexToString(GetGenderValue());
+#else
+		return *StaticEnum<ETextGender>()->GetNameStringByValue((int64)GetGenderValue());
+#endif
 	case ESUDSValueType::Name:
 		return GetNameValue().ToString();
 	case ESUDSValueType::Variable:

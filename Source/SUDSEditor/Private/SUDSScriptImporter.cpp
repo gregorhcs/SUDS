@@ -1772,7 +1772,11 @@ FString FSUDSScriptImporter::GetCurrentTreePath(const FSUDSScriptImporter::Parse
 	//		Do NOT fallthrough to here
 	// Fallthrough to here instead (/)
 
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+	TStringBuilder<256> B;
+#else
 	FStringBuilderBase B;
+#endif
 	for (auto Indent : Tree.IndentLevelStack)
 	{
 		B.Appendf(TEXT("%s%s"), *Indent.PathEntry, *TreePathSeparator);
@@ -1784,7 +1788,11 @@ FString FSUDSScriptImporter::GetCurrentTreeConditionalPath(const FSUDSScriptImpo
 {
 	// Like GetCurrentTreePath, but for conditional blocks
 	// Cannot fall through to blocks that aren't on the same conditional path
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+	TStringBuilder<256> B;
+#else
 	FStringBuilderBase B;
+#endif
 	int BlockIdx = Tree.CurrentConditionalBlockIdx;
 	B.Append(TreePathSeparator);
 	// work backwards, hence prepend
@@ -1803,7 +1811,11 @@ FString FSUDSScriptImporter::GetCurrentTreeConditionalPath(const FSUDSScriptImpo
 FString FSUDSScriptImporter::GetTreeConditionalPath(const FSUDSScriptImporter::ParsedTree& Tree, int NodeIndex)
 {
 	// Like GetCurrentTreeConditionalPath, but we're not in the block context. Follow the nodes back up 
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+	TStringBuilder<256> B;
+#else
 	FStringBuilderBase B;
+#endif
 	B.Append(TreePathSeparator);
 
 	while (Tree.Nodes.IsValidIndex(NodeIndex))
@@ -2543,7 +2555,11 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 				{
 				case ESUDSParsedNodeType::Text:
 					{
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+						StringTable->GetMutableStringTable()->SetSourceString(InNode.TextID, InNode.Text, "");
+#else
 						StringTable->GetMutableStringTable()->SetSourceString(InNode.TextID, InNode.Text);
+#endif
 						// Always include speaker metadata
 						StringTable->GetMutableStringTable()->SetMetaData(InNode.TextID, FName("Speaker"), InNode.Identifier);
 						// Other metadata
@@ -2579,7 +2595,11 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 						FSUDSExpression Expr = InNode.Expression;
 						if (Expr.IsTextLiteral())
 						{
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+							StringTable->GetMutableStringTable()->SetSourceString(InNode.TextID, Expr.GetTextLiteralValue().ToString(), "");
+#else
 							StringTable->GetMutableStringTable()->SetSourceString(InNode.TextID, Expr.GetTextLiteralValue().ToString());
+#endif
 							Expr.SetTextLiteralValue(FText::FromStringTable (StringTable->GetStringTableId(), InNode.TextID));
 						}
 						SetNode->Init(InNode.Identifier, Expr, InNode.SourceLineNo);
@@ -2707,7 +2727,11 @@ void FSUDSScriptImporter::PopulateAssetFromTree(USUDSScript* Asset,
 
 						if (!InEdge.TextID.IsEmpty() && !InEdge.Text.IsEmpty())
 						{
+#if ENGINE_MAJOR_VERSION ==5 && ENGINE_MINOR_VERSION >= 8
+							StringTable->GetMutableStringTable()->SetSourceString(InEdge.TextID, InEdge.Text, "");
+#else
 							StringTable->GetMutableStringTable()->SetSourceString(InEdge.TextID, InEdge.Text);
+#endif
 							NewEdge.SetText(FText::FromStringTable(StringTable->GetStringTableId(), InEdge.TextID));
 							// Always include speaker metadata, always the player in a choice
 							// Identify that it's a choice so translators know that there may be more limited space
